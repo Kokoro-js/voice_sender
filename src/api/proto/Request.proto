@@ -1,0 +1,66 @@
+syntax = "proto3";
+
+import "google/protobuf/struct.proto";
+
+package OMNI;
+
+message BaseInfo {
+  enum IMPL {
+    KOOK = 0;
+  }
+  string stream_id = 1;
+  string name = 2;
+  IMPL impl = 3;
+  google.protobuf.Struct meta_data = 4;
+}
+
+message StreamInfo {
+  string ip = 1;
+  int32 port = 2;
+  int32 rtcp_port = 3;
+  int32 audio_ssrc = 4;
+  int32 audio_pt = 5;
+  int32 bitrate = 6;
+  bool rtcp_mux = 7;
+}
+
+message OrderItem {
+  enum OrderType {
+    FILE = 0; // 首次下载的普通文件
+    CACHED = 1; // 从系统内部获取的缓存文件
+    STREAM = 2; // 纯流，使用真正的流式处理
+  }
+
+  string task_name = 1;
+  string url = 2;
+  OrderType type = 3;
+}
+
+message StartStreamPayload {
+  BaseInfo info = 1;
+  StreamInfo stream_info = 2;
+  repeated OrderItem order_list = 4;
+}
+
+message RemoveStreamPayload {
+  BaseInfo info = 1;
+}
+
+message UpdateStreamPayload {
+  BaseInfo info = 1;
+  StreamInfo stream_info = 2;
+  repeated OrderItem order_list = 3;
+}
+
+message GetStreamPayload {
+  BaseInfo info = 1;
+}
+
+message Request {
+  oneof payload {
+    StartStreamPayload start_stream_payload = 1;
+    RemoveStreamPayload remove_stream_payload = 2;
+    UpdateStreamPayload update_stream_payload = 3;
+    GetStreamPayload get_stream_payload = 4;
+  }
+}

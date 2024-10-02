@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package OMNI;
+
+enum StatusCode {
+  SUCCESS = 0;
+  ERROR = 1;
+  NOT_FOUND = 2;
+  INVALID_REQUEST = 3;
+}
+
+message Response {
+  StatusCode code = 1;
+  string message = 2;
+}
