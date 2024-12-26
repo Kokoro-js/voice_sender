@@ -1,23 +1,19 @@
-#include <plog/Log.h>
-
 #include "Handlers.h"
 #include "../../RTPManager/RTPManager.h"
 
-void Handlers::startStreamHandler(const OMNI::StartStreamPayload *data) {
-    LOGI << "已经接收到请求了" << data->info().stream_id();
-
+void Handlers::startStreamHandler(const Instance::StartStreamPayload *data, OMNI::Response &res) {
     // 创建协程任务
     const auto &stream_info = data->stream_info();
     auto streamInfo = ChannelJoinedData{
-        stream_info.ip(),
-        stream_info.port(),
-        stream_info.rtcp_port(),
-        stream_info.audio_ssrc(),
-        stream_info.audio_pt(),
-        stream_info.bitrate(),
-        stream_info.rtcp_mux()
+            stream_info.ip(),
+            stream_info.port(),
+            stream_info.rtcp_port(),
+            stream_info.audio_ssrc(),
+            stream_info.audio_pt(),
+            stream_info.bitrate(),
+            stream_info.rtcp_mux()
     };
-    auto stream_id = data->info().stream_id();
+    auto stream_id = res.stream_id();
 
 
     // int flags = RCE_SEND_ONLY | RCE_RTCP;
@@ -28,22 +24,33 @@ void Handlers::startStreamHandler(const OMNI::StartStreamPayload *data) {
 
     auto stream_ = rtp_instance->createStream(stream_id, streamInfo, RTP_FORMAT_OPUS, flags);
     if (stream_ == nullptr) {
-        LOGE << "创建流失败";
+        LOG(ERROR) << "创建流失败";
+        res.set_code(OMNI::ERROR);
+        res.set_message("创建流失败。");
         return;
     }
 
     auto sender = std::make_shared<AudioSender>(stream_id, rtp_instance, tp, scheduler);
+    sender->setOpusBitRate(streamInfo.bitrate);
     /*if (sender->is_initialized() == false) {
-        LOGE << "添加流请求失败";
+        LOG(ERROR) << "添加流请求失败";
         return;
     }*/
     auto manager = new DownloadManager(tp, std::move(sender));
 
+    std::vector<TaskItem> newTasks;
+    std::vector<std::string> newOrder;
     for (const auto &order: data->order_list()) {
-        LOGI << order.url();
-        auto type = order.type();
-        manager->addTask(order.task_name(), { .name = order.task_name(), .url = order.url(), .type = File });
+        LOG(INFO) << order.url();
+        TaskItem task{
+                .name = order.task_id(), .url = order.url(), .type = static_cast<TaskType>(order.type()),
+                .use_stream = order.use_stream()
+        };
+        newTasks.push_back(task);
+        newOrder.push_back(task.name);
     }
+
+    manager->updateTasks(newTasks, newOrder);
 
     const std::string &key = stream_id;
     instanceMap[key] = manager;
@@ -55,5 +62,5 @@ void Handlers::startStreamHandler(const OMNI::StartStreamPayload *data) {
 
     cleanup_task_container_.start(manager->initAndWaitJobs());
     cleanup_task_container_.garbage_collect();
-    LOGI << "成功添加流请求";
+    LOG(INFO) << "成功添加流请求";
 }

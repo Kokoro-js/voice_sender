@@ -2,14 +2,37 @@ syntax = "proto3";
 
 package OMNI;
 
+import "Base.proto";
+
 enum StatusCode {
-  SUCCESS = 0;
-  ERROR = 1;
-  NOT_FOUND = 2;
-  INVALID_REQUEST = 3;
+    SUCCESS = 0;
+    ERROR = 1;
+    NOT_FOUND = 2;
+    INVALID_REQUEST = 3;
+}
+
+message GetStreamResponse {
+    string stream_id = 1;
+    OrderItem current_play = 2;
+    int32 time_played = 3; // ms
+    int32 time_total = 4; // ms
+    PlayState play_state = 5;
+    ConsumerMode play_mode = 6;
+}
+
+message PlayListResponse {
+    string stream_id = 1;
+    repeated string order_list = 2;
 }
 
 message Response {
-  StatusCode code = 1;
-  string message = 2;
+    bytes id = 1; // 16 字节二进制 ID
+    int64 timestamp = 2; // 毫秒级时间戳
+    StatusCode code = 3;
+    string message = 4;
+    string stream_id = 5; // 此处的 stream_id 只是复述 Req 的，找不到也会存在
+    oneof data {
+        GetStreamResponse get_stream_response = 6;
+        PlayListResponse play_list_response = 7;
+    }
 }

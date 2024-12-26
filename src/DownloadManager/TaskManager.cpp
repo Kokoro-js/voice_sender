@@ -1,104 +1,233 @@
+// TaskManager.cpp
 #include "TaskManager.h"
+#include "../api/EventPublisher.h"
 #include <algorithm>
-#include <ranges>
 #include <unordered_set>
+#include <iostream>
 
-TaskManager::TaskManager(ConsumerMode mode) : mode(mode) {
-    // 初始化其他成员变量或做一些初始化操作
+// 构造函数
+TaskManager::TaskManager(ConsumerMode mode)
+        : mode(mode), currentIndex(0), rng(std::random_device{}()) {
 }
 
-// setMode 方法实现
+// 设置消费者模式
 void TaskManager::setMode(ConsumerMode newMode) {
-    mode = newMode;
+    if (mode != newMode) {
+        mode = newMode;
+        currentIndex = 0; // 重置索引
+        TaskUpdateEvent.set();
+    }
 }
 
-// getMode 方法实现
+// 获取消费者模式
 ConsumerMode TaskManager::getMode() const {
     return mode;
 }
 
-std::optional<TaskItem> TaskManager::findTask(const std::string& task) {
-    auto it = task_map.find(task);
-    if (it == task_map.end()) {
-        return {};
+// 添加任务
+bool TaskManager::addTask(const TaskItem &task_item) {
+    auto [it, inserted] = taskMap.emplace(task_item.name, task_item);
+    if (!inserted) {
+        return false; // 任务已存在
     }
-    return it->second;
-}
-
-int TaskManager::addTask(const std::string& task, const TaskItem& task_item) {
-    // 检查任务是否已存在
-    auto it = task_map.find(task);
-    if (it == task_map.end()) {
-        task_map[task] = task_item;
-        task_order.push_back(task);  // 添加任务到顺序列表中
-        TaskUpdateEvent.set();       // 触发任务更新事件
-        return 1;                    // 返回1表示任务成功添加
-    }
-    task_order.push_back(task);
-    return 0;  // 如果任务已存在，返回0
-}
-
-int TaskManager::removeTask(const std::string& task) {
-    const auto it = findTask(task);
-    if (it.has_value() == false) {
-        return -1;
-    }
-    task_map.erase(task);
-    // 使用 ranges::remove 重新排列向量
-    auto newEnd = std::ranges::remove(task_order, it.value().name);
-    // 使用 erase 删除新逻辑末尾到实际末尾的元素
-    task_order.erase(newEnd.begin(), task_order.end());
+    taskOrder.push_back(task_item.name);
     TaskUpdateEvent.set();
-    return 1;
+    return true;
 }
 
-int TaskManager::removeTasks(const std::vector<std::string>& removeTaskList) {
-    std::unordered_set<std::string> targets = {};
-    for (const auto& task : removeTaskList) {
-        auto it = findTask(task);
-        if (it.has_value() == false) {
-            continue;
+// 移除任务
+bool TaskManager::removeTask(const std::string &taskName) {
+    auto it = taskMap.find(taskName);
+    if (it == taskMap.end()) {
+        return false; // 任务不存在
+    }
+
+    // 从 taskOrder 中移除所有出现的任务
+    taskOrder.erase(std::remove(taskOrder.begin(), taskOrder.end(), taskName), taskOrder.end());
+
+    // 从 taskMap 中移除任务
+    taskMap.erase(it);
+
+    // 调整 currentIndex
+    if (currentIndex >= taskOrder.size()) {
+        currentIndex = 0;
+    }
+
+    TaskUpdateEvent.set();
+    return true;
+}
+
+// 绝对跳转到指定任务
+bool TaskManager::skipTo(const std::string &taskName) {
+    auto it = std::find(taskOrder.begin(), taskOrder.end(), taskName);
+    if (it == taskOrder.end()) {
+        return false; // 任务不存在
+    }
+    currentIndex = std::distance(taskOrder.begin(), it);
+    TaskUpdateEvent.set();
+    hasManualSkip = true;
+    return true;
+}
+
+// 相对跳转
+bool TaskManager::skipRelative(int offset) {
+    if (taskOrder.empty()) {
+        return false; // 无任务
+    }
+
+    /*if (mode == ConsumerMode::SingleLoop) {
+        // 在单曲循环模式下，无论偏移量如何，都保持在当前歌曲
+        TaskUpdateEvent.set();
+        return true;
+    }*/
+
+    // 计算新的索引，支持循环
+    int newIndex = static_cast<int>(currentIndex) + offset;
+
+    if (mode == ConsumerMode::RoundRobin) {
+        newIndex %= static_cast<int>(taskOrder.size());
+        if (newIndex < 0) {
+            newIndex += taskOrder.size();
         }
-        targets.insert(it.value().name);
+    } else {
+        // 对于其他模式，限制在有效范围内
+        if (newIndex < 0) {
+            newIndex = 0;
+        } else if (static_cast<size_t>(newIndex) >= taskOrder.size()) {
+            newIndex = taskOrder.size() - 1;
+        }
     }
-    task_order.erase(std::remove_if(task_order.begin(), task_order.end(),
-                         [&targets](const std::string& item) {
-                             return targets.contains(item);
-                         }),
-          task_order.end());
+
+    currentIndex = static_cast<size_t>(newIndex);
     TaskUpdateEvent.set();
-    return targets.size();
+    hasManualSkip = true;
+    return true;
 }
 
+// 清空所有任务
+void TaskManager::clearTasks() {
+    taskMap.clear();
+    taskOrder.clear();
+    currentIndex = 0;
+    TaskUpdateEvent.set();
+}
+
+// 查找任务
+std::optional<TaskItem> TaskManager::findTask(const std::string &taskName) const {
+    auto it = taskMap.find(taskName);
+    if (it != taskMap.end()) {
+        return it->second;
+    }
+    return std::nullopt;
+}
+
+// 获取下一个任务
 std::optional<TaskItem> TaskManager::getNextTask() {
-    if (task_order.empty()) {
-        return std::nullopt;  // 确保任务列表不为空
+    if (taskOrder.empty()) {
+        return std::nullopt; // 无任务
+    }
+
+    if (hasManualSkip) {
+        hasManualSkip = false;
+        // return taskMap.at(taskOrder[currentIndex]);
     }
 
     std::optional<TaskItem> result = std::nullopt;
+
     switch (mode) {
         case ConsumerMode::FIFO:
-            if (currentIndex < task_order.size()) {
-                result = task_map[task_order[currentIndex]];
-                currentIndex++;  // 仅在有效索引时递增
+            if (currentIndex < taskOrder.size()) {
+                result = taskMap.at(taskOrder[currentIndex]);
+                currentIndex++;
             }
-        break;
+            break;
+
         case ConsumerMode::LIFO:
             if (currentIndex > 0) {
                 currentIndex--;
-                result = task_map[task_order[currentIndex]];
+                result = taskMap.at(taskOrder[currentIndex]);
             }
-        break;
+            break;
+
         case ConsumerMode::RoundRobin:
-            result = task_map[task_order[currentIndex]];
-        currentIndex = (currentIndex + 1) % task_order.size();
-        break;
-        case ConsumerMode::Random:
-            result = task_map[task_order[rand() % task_order.size()]];
-        break;
+            if (currentIndex >= taskOrder.size()) {
+                currentIndex = 0;
+            }
+            if (!taskOrder.empty()) {
+                result = taskMap.at(taskOrder[currentIndex]);
+                currentIndex = (currentIndex + 1) % taskOrder.size();
+            }
+            break;
+
+        case ConsumerMode::Random: {
+            size_t index = getRandomIndex();
+            if (index < taskOrder.size()) {
+                result = taskMap.at(taskOrder[index]);
+            }
+            break;
+        }
+
+        case ConsumerMode::SingleLoop:
+            if (currentIndex < taskOrder.size()) {
+                result = taskMap.at(taskOrder[currentIndex]);
+            }
+            break;
+
         default:
             break;
     }
 
     return result;
+}
+
+// 生成随机索引
+size_t TaskManager::getRandomIndex() const {
+    std::lock_guard<std::mutex> lock(rngMutex);
+    if (taskOrder.empty()) return 0;
+    std::uniform_int_distribution<size_t> dist(0, taskOrder.size() - 1);
+    return dist(rng);
+}
+
+// 批量更新任务
+bool TaskManager::updateTasks(const std::vector<TaskItem> &newTasks, const std::vector<std::string> &newOrder) {
+    // 1. 添加或更新任务
+    for (const auto &task: newTasks) {
+        taskMap[task.name] = task;
+    }
+
+    // 2. 验证 newOrder 中的所有任务名称在 taskMap 中存在
+    for (const auto &taskName: newOrder) {
+        if (taskMap.find(taskName) == taskMap.end()) {
+            // newOrder 中包含不存在的任务名称
+            std::cerr << "Error: Task \"" << taskName << "\" in newOrder does not exist in taskMap.\n";
+            return false;
+        }
+    }
+
+    // 3. 确定要移除的任务（即不在 newOrder 中出现的任务）
+    std::unordered_set<std::string> orderTaskSet(newOrder.begin(), newOrder.end());
+    std::vector<std::string> tasksToRemove;
+    for (const auto &[name, _]: taskMap) {
+        if (orderTaskSet.find(name) == orderTaskSet.end()) {
+            tasksToRemove.push_back(name);
+        }
+    }
+
+    // 4. 移除不在 newOrder 中的任务
+    for (const auto &taskName: tasksToRemove) {
+        taskMap.erase(taskName);
+    }
+
+    // 5. 更新 taskOrder
+    taskOrder = newOrder;
+
+    // 6. 调整 currentIndex 如果超出范围
+    if (currentIndex >= taskOrder.size()) {
+        currentIndex = 0;
+    }
+
+    // 7. 统一触发事件
+    TaskUpdateEvent.set();
+    EventPublisher::getInstance().handle_event_publish(stream_id_, true);
+    return true;
 }

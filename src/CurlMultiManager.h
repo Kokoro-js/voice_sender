@@ -5,22 +5,26 @@
 #include <vector>
 #include <mutex>
 #include <condition_variable>
-#include <atomic>
 #include <thread>
 #include <functional>
 #include <unordered_map>
+#include <string>
 
 class CurlMultiManager {
 public:
-    using CompletionCallback = std::function<void(CURLcode result, const std::string& response)>;
+    using CompletionCallback = std::function<void(CURLcode result, const std::string& error)>;
 
-    // 获取CurlMultiManager的全局唯一实例
+    // 获取 CurlMultiManager 的全局唯一实例
     static CurlMultiManager& getInstance();
 
+    // 禁止拷贝和赋值
     CurlMultiManager(const CurlMultiManager&) = delete;
     CurlMultiManager& operator=(const CurlMultiManager&) = delete;
 
+    // 添加任务
     void addTask(CURL* easy_handle, CompletionCallback callback = nullptr);
+
+    // 停止管理器
     void stop();
 
 private:
@@ -35,8 +39,8 @@ private:
     std::unordered_map<CURL*, CompletionCallback> callbacks_;
     std::mutex mutex_;
     std::condition_variable cv_;
-    std::atomic<bool> running_;
-    std::atomic<int> still_running_;
+    bool running_;
+    int still_running_;
     std::thread worker_thread_;
 };
 

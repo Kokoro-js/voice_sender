@@ -1,0 +1,37 @@
+syntax = "proto3";
+
+package OMNI.Instance;
+
+import "Base.proto";
+import "Action.proto";
+import "PlayList.proto";
+
+message StreamRequest {
+    BaseInfo info = 1;
+    oneof payload {
+        StartStreamPayload start_stream_payload = 2;
+        RemoveStreamPayload remove_stream_payload = 3;
+        UpdateStreamPayload update_stream_payload = 4;
+        GetStreamPayload get_stream_payload = 5;
+        GetPlayListPayload get_play_list_payload = 6;
+        UpdatePlayListPayload update_play_list_payload = 7;
+    }
+}
+
+message StartStreamPayload {
+    StreamInfo stream_info = 1;
+    repeated OrderItem order_list = 2;
+}
+
+message UpdateStreamPayload {
+    StreamInfo stream_info = 1;
+    oneof action {
+        OMNI.Action.SeekPayload seek_payload = 2;
+        OMNI.Action.DoSkipPayload skip_payload = 3;
+        OMNI.Action.SwitchPlayState switch_play_state_payload = 4;
+        OMNI.Action.SwitchPlayMode switch_play_mode_payload = 5;
+    }
+}
+
+message GetStreamPayload {}
+message RemoveStreamPayload {}

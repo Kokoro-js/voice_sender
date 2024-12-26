@@ -1,14 +1,13 @@
 #pragma once
 
 #include "AudioDecoder.h"
-#include "AudioDataBuffer.h" // 假设 AudioDataBuffer.h 已经定义
-#include <plog/Log.h>
 #include <memory>
 #include <stdexcept>
 
 extern "C" {
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
+#include <libavutil/frame.h>
 }
 
 class FfmpegDecoder : public AudioDecoder {
@@ -16,9 +15,8 @@ public:
     /**
      * @brief 构造函数
      *
-     * @param data_buffer 外部已存在的 AudioDataBuffer 指针
      */
-    explicit FfmpegDecoder(AudioDataBuffer* data_buffer);
+    explicit FfmpegDecoder();
 
     /**
      * @brief 析构函数
@@ -40,7 +38,7 @@ public:
      * @param data_size 实际读取的数据大小（字节）
      * @return int 0 表示成功，非0表示失败
      */
-    int read(void* output_buffer, int buffer_size, size_t* data_size) override;
+    int read(void *output_buffer, int buffer_size, size_t *data_size) override;
 
     /**
      * @brief 定位到指定的时间点
@@ -49,6 +47,13 @@ public:
      * @return int 0 表示成功，非0表示失败
      */
     int seek(double target_seconds) override;
+
+    /**
+     * @brief 获取音频当前样本数
+     *
+     * @return int 当前样本数
+     */
+    int getCurrentSamples() override;
 
     /**
      * @brief 获取音频总样本数
@@ -71,11 +76,11 @@ public:
 
 private:
     // FFmpeg相关成员
-    AVFormatContext* format_ctx_;
-    AVCodecContext* codec_ctx_;
-    const AVCodec* codec_;
-    AVPacket* packet_;
-    AVFrame* frame_;
+    AVFormatContext *format_ctx_;
+    AVCodecContext *codec_ctx_;
+    const AVCodec *codec_;
+    AVPacket *packet_;
+    AVFrame *frame_;
 
     int audio_stream_index_;
     int64_t total_samples_;
@@ -86,19 +91,23 @@ private:
     bool needs_reinit_;
 
     // 持有 AVIOContext
-    AVIOContext* avio_ctx_;
+    AVIOContext *avio_ctx_;
+    static constexpr int avio_ctx_buffer_size = 4096;
+    // unsigned char *avio_ctx_buffer = static_cast<unsigned char *>(av_malloc(avio_ctx_buffer_size));
 
     // 外部提供的 AudioDataBuffer，不在类的声明中
     // 通过 avio_alloc_context 的 opaque 参数传递
 
     // 辅助函数
     int initialize_decoder();
+
     void cleanupFFmpeg();
 
     // 辅助函数声明
-    static const char* get_av_error_string(int errnum);
+    static const char *get_av_error_string(int errnum);
 
     // 禁用拷贝构造和赋值
-    FfmpegDecoder(const FfmpegDecoder&) = delete;
-    FfmpegDecoder& operator=(const FfmpegDecoder&) = delete;
+    FfmpegDecoder(const FfmpegDecoder &) = delete;
+
+    FfmpegDecoder &operator=(const FfmpegDecoder &) = delete;
 };

@@ -1,0 +1,55 @@
+syntax = "proto3";
+
+package OMNI;
+
+import "google/protobuf/struct.proto";
+
+message BaseExtra {
+    enum IMPL {
+        UNKNOWN = 0;  // 表示未设置或未知类型
+        KOOK = 1;
+    }
+    IMPL impl = 2;               // 枚举表示实现类型
+    string name = 3;             // 实例名称
+    google.protobuf.Struct meta_data = 4;  // 动态元数据
+}
+
+message BaseInfo {
+    string stream_id = 1;  // 流 ID
+    optional BaseExtra extra = 2;   // 包含额外信息
+}
+
+enum PlayState {
+    PLAYING = 0;
+    PAUSE = 1;
+}
+
+enum ConsumerMode {
+    FIFO = 0;      // 先进先出，或称为顺序消费
+    LIFO = 1;         // 后进先出，通常用于栈结构
+    RoundRobin = 2;  // 循环消费，按顺序依次消费，完成后重新开始
+    Random = 3;       // 随机消费，随机选择元素进行消费
+    SingleLoop = 4;    // 单曲循环，只循环当前歌曲
+};
+
+message OrderItem {
+    enum OrderType {
+        FILE = 0; // 首次下载的普通文件
+        CACHED = 1; // 从系统内部获取的缓存文件
+    }
+
+    string task_id = 1;
+    string url = 2;
+    OrderType type = 3;
+    bool use_stream = 4;
+}
+
+message StreamInfo {
+    string ip = 1;
+    int32 port = 2;
+    int32 rtcp_port = 3;
+    int32 audio_ssrc = 4;
+    int32 audio_pt = 5;
+    int32 bitrate = 6;
+    bool rtcp_mux = 7;
+}

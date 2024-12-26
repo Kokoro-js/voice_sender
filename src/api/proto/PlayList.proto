@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package OMNI.Instance;
+
+import "Base.proto";
+
+message GetPlayListPayload {}
+
+message UpdatePlayListPayload {
+    repeated OrderItem order_list = 1;
+}
+

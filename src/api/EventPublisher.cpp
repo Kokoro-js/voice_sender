@@ -1,86 +1,103 @@
 #include "EventPublisher.h"
-
 #include "handlers/Handlers.h"
+#include <thread>
+#include <chrono>
 
-// 获取唯一实例
-EventPublisher& EventPublisher::getInstance() {
+EventPublisher &EventPublisher::getInstance() {
     static EventPublisher instance;
     return instance;
 }
 
-// 构造函数
 EventPublisher::EventPublisher()
-    : context_(1),
-      publisher_(context_, zmq::socket_type::pub),
-      responder_(context_, zmq::socket_type::rep),
-      bind_address_("tcp://*:5556"),
-      initialized_(false) {
+        : context_(1),
+          publisher_(context_, zmq::socket_type::pub),
+          router(context_, zmq::socket_type::router),
+          publisher_bind_address_("tcp://*:5556"),
+          responder_bind_address_("tcp://*:5557"),
+          initialized_(false) {
     Handlers::getInstance();
-    std::atexit([]() {
-        EventPublisher::getInstance().~EventPublisher();
-    });
+    initialize();
 }
 
-// 析构函数
 EventPublisher::~EventPublisher() {
     if (initialized_) {
         publisher_.close();
-        responder_.close();
+        router.close();
     }
 }
 
-// 发布事件（字符串版本）
-void EventPublisher::publish_event(const std::string& event_message) {
+void EventPublisher::publish_event(const std::string &event_message) {
     try {
-        std::lock_guard<std::mutex> lock(mutex_);
-        ensure_initialized();
+        zmq::message_t event(event_message.data(), event_message.size());
+        auto result = router.send(event, zmq::send_flags::dontwait);
 
-        zmq::message_t event(event_message.size());
-        memcpy(event.data(), event_message.c_str(), event_message.size());
-        publisher_.send(event, zmq::send_flags::none);
-        std::cout << "Published: " << event_message << std::endl;
-    } catch (const zmq::error_t& e) {
-        std::cerr << "ZMQ Error: " << e.what() << std::endl;
-    } catch (const std::exception& e) {
-        std::cerr << "Standard Error: " << e.what() << std::endl;
+        if (result) {
+            LOG(INFO) << "Published: " << event_message;
+        } else {
+            LOG(WARNING) << "Failed to publish event (message queue may be full)";
+        }
+    } catch (const zmq::error_t &e) {
+        LOG(ERROR) << "ZMQ Error: " << e.what();
+    } catch (const std::exception &e) {
+        LOG(ERROR) << "Standard Error: " << e.what();
     }
 }
 
-// 发布事件（FlatBuffers 版本）
-void EventPublisher::publish_event(const uint8_t* data, size_t size) {
+void EventPublisher::publish_event(const OMNI::Response &response) {
     try {
-        std::lock_guard<std::mutex> lock(mutex_);
-        ensure_initialized();
+        size_t size = response.ByteSizeLong();
+        std::vector<uint8_t> serialized_data(size);
+        response.SerializeToArray(serialized_data.data(), size);
 
-        zmq::message_t event(size);
-        memcpy(event.data(), data, size);
-        publisher_.send(event, zmq::send_flags::none);
-        std::cout << "Published FlatBuffers event" << std::endl;
-    } catch (const zmq::error_t& e) {
-        std::cerr << "ZMQ Error: " << e.what() << std::endl;
-    } catch (const std::exception& e) {
-        std::cerr << "Standard Error: " << e.what() << std::endl;
+        std::string routing_id = "OMNI"; // 固定 routingId
+        zmq::message_t client_identity(routing_id.begin(), routing_id.end());
+        zmq::message_t empty_frame;
+        zmq::message_t message_to_send(serialized_data.data(), serialized_data.size());
+        router.send(client_identity, zmq::send_flags::sndmore);
+        // router.send(empty_frame, zmq::send_flags::sndmore);
+        auto result = router.send(message_to_send, zmq::send_flags::dontwait);
+        if (!result) {
+            LOG(WARNING) << "Failed to publish event (message queue may be full)";
+        }
+    } catch (const zmq::error_t &e) {
+        LOG(ERROR) << "ZMQ Error: " << e.what();
+    } catch (const std::exception &e) {
+        LOG(ERROR) << "Standard Error: " << e.what();
     }
 }
 
-// 设置连接字符串
-void EventPublisher::set_bind_address(const std::string& bind_address) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (initialized_) {
-        publisher_.close();
-        responder_.close();
-        initialized_ = false;
-    }
-    bind_address_ = bind_address;
-}
-
-// 确保在首次使用前初始化 ZeroMQ socket
-void EventPublisher::ensure_initialized() {
+void EventPublisher::initialize() {
     if (!initialized_) {
-        publisher_.bind(bind_address_);
-        responder_.bind("tcp://*:5557");  // 设置 REQ/REP 模式的端口
-        initialized_ = true;
+        try {
+            // initialize_publisher();
+            initialize_responder();
+
+            std::this_thread::sleep_for(std::chrono::seconds(2));
+            initialized_ = true;
+
+        } catch (const zmq::error_t &e) {
+            LOG(ERROR) << "ZMQ Error during initialization: " << e.what();
+            throw;
+        }
     }
 }
 
+void EventPublisher::initialize_publisher() {
+    try {
+        publisher_.bind(publisher_bind_address_);
+        LOG(INFO) << "Publisher bound to " << publisher_bind_address_;
+    } catch (const zmq::error_t &e) {
+        LOG(ERROR) << "Failed to bind publisher: " << e.what();
+        throw;
+    }
+}
 
+void EventPublisher::initialize_responder() {
+    try {
+        router.bind(responder_bind_address_);
+        LOG(INFO) << "Responder bound to " << responder_bind_address_;
+    } catch (const zmq::error_t &e) {
+        LOG(ERROR) << "Failed to bind responder: " << e.what();
+        throw;
+    }
+}

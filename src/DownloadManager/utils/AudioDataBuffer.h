@@ -1,6 +1,5 @@
 #pragma once
 #include <memory>
-#include <stdexcept>
 
 class FixedCapacityBuffer {
 public:
@@ -29,9 +28,9 @@ private:
     std::unique_ptr<unsigned char[]> buffer_;
 };
 
-class AudioDataBuffer : public FixedCapacityBuffer {
+/*class AudioDataBuffer : public FixedCapacityBuffer {
 public:
     explicit AudioDataBuffer(const size_t capacity) : FixedCapacityBuffer(capacity) {}
 
     size_t current_pos = 0;
-};
+};*/

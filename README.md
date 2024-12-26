@@ -1,5 +1,7 @@
 # voice_sender
-解码 Mp3, Flac, AAC, Flac 等格式并编码成 Opus 封装 RTP 包发送的项目。
+解码 Mp3, Flac, AAC 等格式并编码成 Opus 封装 RTP 包发送的项目。
+
+目前正在驱动 [blazefm.app](https://kook.vip/Q3cl1q)
 
 # 编译说明
 安装 vcpkg，缺啥依赖安装啥依赖，一般 CMAKE 里用 find_package 的都是 vcpkg 的。

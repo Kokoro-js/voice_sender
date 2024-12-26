@@ -8,8 +8,15 @@
 #include <uvgrtp/session.hh>
 #include <uvgrtp/media_stream.hh>
 
-#include "../kook/ChannelJoinedData.h"
-
+struct ChannelJoinedData {
+    std::string ip;
+    int port;
+    int rtcp_port;
+    int audio_ssrc;
+    int audio_pt;
+    int bitrate;
+    bool rtcp_mux;
+};
 
 class RTPInstance {
 public:

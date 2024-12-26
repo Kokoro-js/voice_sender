@@ -2,24 +2,24 @@
 #include <plog/Log.h>
 #include "CustomIO.hpp"
 
-#include "AudioDataBuffer.h"
+#include "../../utils/AudioTypes.h"
 
 // 自定义读取函数
 mpg123_ssize_t CustomIO::custom_mpg123_read(void *handle, void *buffer, size_t size) {
-    auto *src_buffer = static_cast<AudioDataBuffer *>(handle);
-    if (src_buffer->current_pos + size > src_buffer->size()) {
-        size = src_buffer->size() - src_buffer->current_pos; // 防止读取超出范围
+    auto *src_buffer = static_cast<BufferWarp *>(handle);
+    if (src_buffer->pos_ + size > src_buffer->size()) {
+        size = src_buffer->size() - src_buffer->pos_; // 防止读取超出范围
     }
 
-    memcpy(buffer, src_buffer->data() + src_buffer->current_pos, size);
-    src_buffer->current_pos += size;
+    memcpy(buffer, src_buffer->buffer->data() + src_buffer->pos_, size);
+    src_buffer->pos_ += size;
 
     return size;
 }
 
 // 自定义寻址函数
 off_t CustomIO::custom_mpg123_lseek(void *handle, off_t offset, int whence) {
-    auto *src_buffer = static_cast<AudioDataBuffer *>(handle);
+    auto *src_buffer = static_cast<BufferWarp *>(handle);
     off_t new_pos = 0;
 
     switch (whence) {
@@ -27,23 +27,23 @@ off_t CustomIO::custom_mpg123_lseek(void *handle, off_t offset, int whence) {
             new_pos = offset;
             break;
         case SEEK_CUR:
-            new_pos = src_buffer->current_pos + offset;
+            new_pos = src_buffer->pos_ + offset;
             break;
         case SEEK_END:
             new_pos = src_buffer->size() + offset;
             break;
         default:
-            PLOG_ERROR << "Invalid 'whence': " << whence;
+            LOG(ERROR) << "Invalid 'whence': " << whence;
             return -1;
     }
 
     if (new_pos < 0 || static_cast<size_t>(new_pos) > src_buffer->size()) {
-        PLOG_ERROR << "Seek out of range. Position: " << new_pos;
+        LOG(ERROR) << "Seek out of range. Position: " << new_pos;
         return -1;
     }
 
-    src_buffer->current_pos = static_cast<size_t>(new_pos);
-    PLOG_DEBUG << "Seeking to position: " << new_pos;
+    src_buffer->pos_ = static_cast<size_t>(new_pos);
+    VLOG(2) << "Custom lseek called with offset: " << offset << ", whence: " << whence << ". New position: " << new_pos;
     return new_pos;
 }
 

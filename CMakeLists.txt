@@ -6,11 +6,6 @@ project(${PROJECT_NAME} VERSION 1.0)
 
 set(CMAKE_CXX_STANDARD 20)
 
-if(CMAKE_BUILD_TYPE STREQUAL "Release")
-    # 添加静态链接的标志（GNU 编译器的例子）
-    # set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++")
-endif()
-
 # 设置源文件目录
 set(SRC_DIR ${CMAKE_SOURCE_DIR}/src)
 
@@ -20,16 +15,26 @@ file(GLOB_RECURSE HEADERS "${SRC_DIR}/*.h" "${SRC_DIR}/**/*.h")
 
 find_package(protobuf CONFIG REQUIRED)
 message(STATUS "Using protobuf ${Protobuf_VERSION}")
-set(PROTO_FILES src/api/proto/Request.proto src/api/proto/Response.proto)
+#file(GLOB_RECURSE PROTO_FILES "${SRC_DIR}/api/proto/*.proto")
+set(PROTO_FILES
+        src/api/proto/Base.proto
+        src/api/proto/Action.proto
+        src/api/proto/Stream.proto
+        src/api/proto/Request.proto
+        src/api/proto/Response.proto
+        src/api/proto/PlayList.proto
+)
 protobuf_generate_cpp(PROTO_SRCS PROTO_HDRS ${PROTO_FILES})
 
 # 定义可执行文件
 add_executable(${PROJECT_NAME} ${SOURCES} ${PROTO_SRCS} ${PROTO_HDRS}
-        src/DownloadManager/AudioSender/decoder/CustomIO.hpp)
+        src/DownloadManager/AudioSender/decoder/CustomIO.hpp
+)
 
 # 查找依赖库 Opus、Poco、plog 和 CURL
 find_package(Opus CONFIG REQUIRED)
-find_package(plog CONFIG REQUIRED)
+#find_package(plog CONFIG REQUIRED)
+find_package(glog CONFIG REQUIRED)
 find_package(CURL CONFIG REQUIRED)
 find_package(mpg123 CONFIG REQUIRED)
 find_package(SampleRate CONFIG REQUIRED)
@@ -43,6 +48,8 @@ file(
         EXPECTED_HASH SHA256=c8cdc32c03816538ce22781ed72964dc864b2a34a310d3b7104812a5ca2d835d
 )
 include(${CMAKE_CURRENT_BINARY_DIR}/cmake/CPM.cmake)
+include(cmake/ffmpeg.cmake)
+include(cmake/folly.cmake)
 
 set(UVGRTP_DISABLE_CRYPTO 1 CACHE BOOL "Disable Crypto++ in uvgRTP.")
 CPMAddPackage("gh:ultravideo/uvgRTP@3.1.3")
@@ -50,39 +57,15 @@ CPMAddPackage("gh:ultravideo/uvgRTP@3.1.3")
 set(LIBCORO_EXTERNAL_DEPENDENCIES ON CACHE BOOL "Use CMake find_package to resolve dependencies instead of embedded libraries.")
 CPMAddPackage("gh:jbaldwin/libcoro@0.12.1")
 
-CPMAddPackage("gh:cameron314/readerwriterqueue@1.0.6")
-
 CPMAddPackage(
-        NAME FFmpeg
-        GIT_REPOSITORY https://github.com/FFmpeg/FFmpeg
-        GIT_TAG n7.0.2
-        DOWNLOAD_ONLY YES
+        NAME yalantinglibs
+        GITHUB_REPOSITORY "alibaba/yalantinglibs"
+        GIT_TAG "0.3.9"  # 明确指定为 "0.3.9"，避免 CPM 尝试加 "v"
+        OPTIONS "BUILD_EXAMPLES OFF" "BUILD_BENCHMARK OFF"
+        "BUILD_UNIT_TESTS OFF" "GENERATE_BENCHMARK_DATA OFF" "BUILD_BUILD_CORO_RPC OFF"
 )
 
-if(FFmpeg_ADDED)
-    include(ExternalProject)
-    ExternalProject_Add(ffmpeg_project
-            SOURCE_DIR ${FFmpeg_SOURCE_DIR}
-            CONFIGURE_COMMAND ${FFmpeg_SOURCE_DIR}/configure  # 使用 ${FFmpeg_SOURCE_DIR} 替换 <SOURCE_DIR>
-            --prefix=${CMAKE_BINARY_DIR}/ffmpeg
-            --disable-shared
-            --enable-static
-            --disable-programs
-            --disable-everything
-            --enable-avformat  # 启用 avformat
-            --enable-parser=mp3,aac,flac
-            --enable-decoder=mp3,aac,flac,alac
-            --enable-demuxer=mp3,aac,flac,mov
-            BUILD_COMMAND $(MAKE)
-            INSTALL_COMMAND $(MAKE) install
-            BUILD_IN_SOURCE 1
-    )
-
-    # Make sure your project links against the locally built FFmpeg libraries
-    add_dependencies(${PROJECT_NAME} ffmpeg_project)
-    include_directories(${CMAKE_CURRENT_BINARY_DIR}/ffmpeg/include)
-    link_directories(${CMAKE_CURRENT_BINARY_DIR}/ffmpeg/lib)
-endif()
+CPMAddPackage("gh:cameron314/readerwriterqueue@1.0.6")
 
 # 设置 uvgRTP 选项，并添加子目录
 #add_subdirectory(external/uvgRTP)
@@ -102,16 +85,15 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
         uvgrtp
         CURL::libcurl
         readerwriterqueue
-        plog::plog
+        # plog::plog
         libcoro
         MPG123::libmpg123 MPG123::libout123 MPG123::libsyn123
         SampleRate::samplerate
         cppzmq cppzmq-static
         opusenc
         protobuf::libprotoc protobuf::libprotobuf protobuf::libprotobuf-lite
-        ${CMAKE_BINARY_DIR}/ffmpeg/lib/libavformat.a
-        ${CMAKE_BINARY_DIR}/ffmpeg/lib/libavcodec.a
-        ${CMAKE_BINARY_DIR}/ffmpeg/lib/libavutil.a
+        glog::glog
+        yalantinglibs::yalantinglibs
 )
 
 add_executable(test test.cpp)
