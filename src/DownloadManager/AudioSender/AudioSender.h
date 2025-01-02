@@ -4,7 +4,7 @@
 #ifndef AUDIOSENDER_H
 #define AUDIOSENDER_H
 
-#include <opusenc.h>
+// #include <opusenc.h>
 #include "decoder/AudioDecoder.h"
 #include "decoder/AudioDecoder_Mpg123.h"
 #include "decoder/AudioDecoder_FFmpeg.h"
@@ -25,6 +25,7 @@ extern "C" {
 #include <random>
 #include "../../RTPManager/RTPInstance.h" // 更新相对路径
 #include "../utils/ExtendedTaskItem.h" // 包含 ExtendedTaskItem
+#include "AudioAlignedAlloc.h"
 
 // Forward declarations
 class ExtendedTaskItem;
@@ -48,6 +49,8 @@ struct AudioProps {
 
     int current_samples = 0;
     int total_samples = 0;
+    // 音量因子，1.0 表示原始音量，0.5 表示减半音量，2.0 表示加倍音量
+    float volume = 1.0f;
 
     bool do_empty_ring_buffer = false;
 
@@ -87,6 +90,8 @@ public:
 
     bool switchPlayState(PlayState state);
 
+    bool setVolume(float volume);
+
     coro::event EventNewDownload;
     coro::event EventReadFinshed;
     coro::event EventFeedDecoder;
@@ -119,16 +124,23 @@ private:
     static constexpr int OPUS_DELAY = 40;
     static constexpr int OPUS_FRAMESIZE = static_cast<int>(TARGET_SAMPLE_RATE * OPUS_DELAY * 0.001);
 
-    OggOpusEnc *enc{};
-    OggOpusComments *comments{};
+/*    OggOpusEnc *enc{};
+    OggOpusComments *comments{};*/
     int err{};
 
-    void initialize_opus_file();
+/*    void initialize_opus_file();
 
-    void finalize_opus_file();
+    void finalize_opus_file();*/
 
     coro::task<int> encode_opus_frame(OpusEncoder *encoder, int16_t *pcm_data, size_t total_samples,
                                       OpusTempBuffer &temp_buffer, int max_data_bytes);
+
+    static constexpr int MAX_DECODE_SIZE = 73728;
+    static constexpr int MAX_PCM_SIZE = 131072;
+    static constexpr int MAX_SAMPLES_COUNT = MAX_PCM_SIZE / sizeof(int16_t);
+    AlignedMem::AlignedUniquePtr<unsigned char> read_output_buffer_;
+    AlignedMem::AlignedUniquePtr<float> float_buffer_;
+    AlignedMem::AlignedUniquePtr<int16_t> resampled_buffer_;
 };
 
 #endif // AUDIOSENDER_H

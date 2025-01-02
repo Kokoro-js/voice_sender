@@ -73,8 +73,6 @@ coro::task<void> AudioSender::start_producer(const std::shared_ptr<ExtendedTaskI
 
             if (audio_props.detectedFormat == nullptr) {
                 LOG(ERROR) << "未知格式！任务" << current_task->item.name << "(" << current_task->item.url << ")";
-                // 对于无法读取的格式我们等待下一首到达后
-                co_await current_task->EventDownloadFinished;
                 continue;
             }
 
@@ -102,7 +100,6 @@ coro::task<void> AudioSender::start_producer(const std::shared_ptr<ExtendedTaskI
                 auto info = using_decoder->getAudioFormat();;
                 if (info.channels == 0) {
                     LOG(ERROR) << "找不到音频信息" << current_task->item.name;
-                    co_await tp_->yield();
                     continue;
                 }
                 audio_props.channels = info.channels;
@@ -117,12 +114,13 @@ coro::task<void> AudioSender::start_producer(const std::shared_ptr<ExtendedTaskI
             }
         }
 
-        // 此处标志正式开始解码e
+        // 此处标志正式开始解码
         EventFeedDecoder.set();
         EventPublisher::getInstance().handle_event_publish(stream_id_, false);
 
         if (current_task->state < AudioCurrentState::DownloadAndWriteFinished) {
             co_await current_task->EventDownloadFinished;
+            EventFeedDecoder.set();
         }
 
         // 此处表明下载写入完成，is_eof 控制着 io，只有 is_eof 为 true 时解码侧才有可能 EventReadFinshed.set()
@@ -170,3 +168,12 @@ bool AudioSender::switchPlayState(::PlayState state) {
     return true;
 }
 
+bool AudioSender::setVolume(float volume) {
+    if (task == nullptr) {
+        return false;
+    }
+
+    // 四舍五入到两位小数
+    audio_props.volume = std::round(volume * 100.0f) / 100.0f;
+    return true;
+}

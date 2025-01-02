@@ -15,8 +15,8 @@ void Handlers::getStreamHandler(const Instance::GetStreamPayload *data, OMNI::Re
     auto task = target->get_audio_sender()->task;
     if (!task) {
         // 当解码出错或队列为空时可以为空，千万不要写 NOT_FOUND
-        res.set_code(OMNI::INVALID_REQUEST);
-        res.set_message("无效的任务指针");
+        res.set_code(OMNI::SUCCESS);
+        res.set_message("该流存在但目前没有任务噢。");
         return;
     }
 
@@ -34,5 +34,6 @@ void Handlers::getStreamHandler(const Instance::GetStreamPayload *data, OMNI::Re
     res_data->set_time_played(static_cast<int32_t>((props.current_samples * 1000L) / props.rate));
     res_data->set_time_total(static_cast<int32_t>((props.total_samples * 1000L) / props.rate));
     res_data->set_play_state(static_cast<OMNI::PlayState>(props.play_state));
+    res_data->set_volume(props.volume);
     res_data->set_play_mode(static_cast<OMNI::ConsumerMode>(target->getMode()));
 }

@@ -20,3 +20,7 @@ message SwitchPlayState {
 message SwitchPlayMode {
     ConsumerMode play_mode = 1;
 }
+
+message SetVolume {
+    float volume = 1;
+}

@@ -69,7 +69,9 @@ coro::task<void> DownloadManager::startQueueJob() {
             if (!final_url.has_value()) {
                 LOG(ERROR) << "获取真实 URL 失败，任务: " << extendedTask->item.name;
                 audio_sender_->doSkip();
-                co_await current_task->EventReadFinished;
+                /* 如果真实链接都没获取就不会触发 EventNewDownload，所以根本不可能等到
+                 * co_await current_task->EventReadFinished;
+                 * */
                 err_count++;
                 continue;
             }

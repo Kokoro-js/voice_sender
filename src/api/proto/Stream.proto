@@ -30,6 +30,7 @@ message UpdateStreamPayload {
         OMNI.Action.DoSkipPayload skip_payload = 3;
         OMNI.Action.SwitchPlayState switch_play_state_payload = 4;
         OMNI.Action.SwitchPlayMode switch_play_mode_payload = 5;
+        OMNI.Action.SetVolume set_volume_payload = 6;
     }
 }
 

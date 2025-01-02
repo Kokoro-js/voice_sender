@@ -14,10 +14,11 @@ enum StatusCode {
 message GetStreamResponse {
     string stream_id = 1;
     OrderItem current_play = 2;
-    int32 time_played = 3; // ms
-    int32 time_total = 4; // ms
+    uint32 time_played = 3; // ms
+    uint32 time_total = 4; // ms
     PlayState play_state = 5;
     ConsumerMode play_mode = 6;
+    float volume = 7;
 }
 
 message PlayListResponse {

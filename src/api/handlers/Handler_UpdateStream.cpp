@@ -17,34 +17,48 @@ void Handlers::updateStreamHandler(const Instance::UpdateStreamPayload *data, OM
 
     // 处理不同的 payload 类型
     try {
-        if (data->has_seek_payload()) {
-            using_decoder->seek(data->seek_payload().second());
-            props.current_samples = using_decoder->getCurrentSamples();
-            props.do_empty_ring_buffer = true;
-        } else if (data->has_skip_payload()) {
-            auto next = data->skip_payload().next();
-            if (!next.empty()) {
-                if (!target->skipTo(next)) {
-                    res.set_code(OMNI::ERROR);
-                    res.set_message("无法跳跃到任务 " + next);
-                    return;
+        switch (data->action_case()) {
+            case OMNI::Instance::UpdateStreamPayload::kSeekPayload: {
+                using_decoder->seek(data->seek_payload().second());
+                props.current_samples = using_decoder->getCurrentSamples();
+                props.do_empty_ring_buffer = true;
+            };
+                break;
+            case OMNI::Instance::UpdateStreamPayload::kSkipPayload: {
+                auto next = data->skip_payload().next();
+                if (!next.empty()) {
+                    if (!target->skipTo(next)) {
+                        res.set_code(OMNI::ERROR);
+                        res.set_message("无法跳跃到任务 " + next);
+                        return;
+                    }
                 }
-            }
-            auto offset = data->skip_payload().offset();
-            if (offset != 0) {
-                if (!target->skipRelative(offset)) {
-                    res.set_code(OMNI::ERROR);
-                    res.set_message(&"无法相对跳跃到任务 "[offset]);
-                    return;
+                auto offset = data->skip_payload().offset();
+                if (offset != 0) {
+                    if (!target->skipRelative(offset)) {
+                        res.set_code(OMNI::ERROR);
+                        res.set_message(&"无法相对跳跃到任务 "[offset]);
+                        return;
+                    }
                 }
-            }
-            audio_sender->doSkip();
-        } else if (data->has_switch_play_state_payload()) {
-            auto state = data->switch_play_state_payload().play_state();
-            audio_sender->switchPlayState(static_cast<::PlayState>(state));
-        } else if (data->has_switch_play_mode_payload()) {
-            auto mode = data->switch_play_mode_payload().play_mode();
-            target->setMode(static_cast<::ConsumerMode>(mode));
+                audio_sender->doSkip();
+            };
+                break;
+            case OMNI::Instance::UpdateStreamPayload::kSwitchPlayStatePayload: {
+                auto state = data->switch_play_state_payload().play_state();
+                audio_sender->switchPlayState(static_cast<::PlayState>(state));
+            };
+                break;
+            case OMNI::Instance::UpdateStreamPayload::kSwitchPlayModePayload: {
+                auto mode = data->switch_play_mode_payload().play_mode();
+                target->setMode(static_cast<::ConsumerMode>(mode));
+            };
+                break;
+            case OMNI::Instance::UpdateStreamPayload::kSetVolumePayload: {
+                auto volume = data->set_volume_payload().volume();
+                audio_sender->setVolume(volume);
+            };
+                break;
         }
     } catch (const std::exception &e) {
         res.set_code(OMNI::ERROR);

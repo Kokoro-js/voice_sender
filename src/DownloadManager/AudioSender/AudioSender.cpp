@@ -1,11 +1,12 @@
 #include "AudioSender.h"
 #include <opus/opus.h>
-#include <../../../include/opusenc.h>
+// #include <../../../include/opusenc.h>
 #include <mpg123.h>
 #include <utility>
 #include <fstream>
 #include "../../api/handlers/Handlers.h"
 #include "../../RTPManager/RTPManager.h"
+#include "AudioAlignedAlloc.h"
 
 void rtp_receive_hook(void *arg, uvgrtp::frame::rtp_frame *frame) {
     LOG(WARNING) << "Received RTP frame" << frame->payload_len;
@@ -21,12 +22,21 @@ AudioSender::AudioSender(std::string stream_id, std::shared_ptr<RTPInstance> rtp
                          std::shared_ptr<coro::thread_pool> tp, std::shared_ptr<coro::io_scheduler> scheduler)
         : stream_id_(std::move(stream_id)), rtp_instance_(std::move(rtp_instance)), tp_(std::move(tp)),
           scheduler_(std::move(scheduler))/*,
-      ffmpeg_decoder(&ioBufWarp)*/ {
+      ffmpeg_decoder(&ioBufWarp)*/,
+          read_output_buffer_(AlignedMem::make_aligned_unique<unsigned char>(MAX_DECODE_SIZE)),
+          float_buffer_(AlignedMem::make_aligned_unique<float>(MAX_SAMPLES_COUNT)),
+          resampled_buffer_(AlignedMem::make_aligned_unique<int16_t>(MAX_SAMPLES_COUNT)) {
+    assert(((reinterpret_cast<uintptr_t>(read_output_buffer_.get()) % xsimd::default_arch::alignment()) == 0) &&
+           "buffer is not properly aligned");
+    assert(((reinterpret_cast<uintptr_t>(float_buffer_.get()) % xsimd::default_arch::alignment()) == 0) &&
+           "float_buffer is not properly aligned");
+    assert(((reinterpret_cast<uintptr_t>(resampled_buffer_.get()) % xsimd::default_arch::alignment()) == 0) &&
+           "resampled_buffer is not properly aligned");
     // initialize_opus_file();
-    if (rtp_instance_->main_stream_->install_receive_hook(this, rtp_receive_hook) != RTP_OK) {
+/*    if (rtp_instance_->main_stream_->install_receive_hook(this, rtp_receive_hook) != RTP_OK) {
         LOG(ERROR) << "Failed to install RTP reception hook";
         return;
-    }
+    }*/
 
     int error;
     opus_encoder_ = opus_encoder_create(48000, 2, OPUS_APPLICATION_AUDIO, &error);
@@ -58,7 +68,7 @@ bool AudioSender::is_initialized() const {
     return initialized_;
 }
 
-
+/*
 void AudioSender::initialize_opus_file() {
     // 初始化 Opus 文件编码器
     comments = ope_comments_create();
@@ -77,7 +87,7 @@ void AudioSender::finalize_opus_file() {
     if (comments) {
         ope_comments_destroy(comments);
     }
-}
+}*/
 
 int AudioSender::setOpusBitRate(const int &kbps) {
     // 设置 Opus 比特率

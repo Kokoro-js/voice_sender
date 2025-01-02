@@ -16,8 +16,8 @@ void Handlers::startStreamHandler(const Instance::StartStreamPayload *data, OMNI
     auto stream_id = res.stream_id();
 
 
-    // int flags = RCE_SEND_ONLY | RCE_RTCP;
-    int flags = RCE_RTCP;
+    int flags = RCE_SEND_ONLY | RCE_RTCP;
+    // int flags = RCE_RTCP;
     if (streamInfo.rtcp_mux) flags |= RCE_RTCP_MUX;
 
     auto rtp_instance = RTPManager::getInstance().getRTPInstance(stream_id, streamInfo.ip);
