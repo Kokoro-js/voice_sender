@@ -53,6 +53,12 @@ void createStreamAndManageTasks(const std::string &stream_id, const std::string 
 }
 
 int main(int argc, char *argv[]) {
+#ifdef IS_RELEASE_BUILD
+    std::cout << "Voice_Connector: Release Build" << std::endl;
+#else
+    std::cout << "Voice_Connector: Debug Build" << std::endl;
+#endif
+
     google::InitGoogleLogging(argv[0]);
     google::SetStderrLogging(google::GLOG_INFO); // 设置标准错误输出的最低日志级别
     FLAGS_alsologtostderr = true; // 日志输出到 stderr
@@ -60,8 +66,8 @@ int main(int argc, char *argv[]) {
     FLAGS_v = 1;
     google::SetVLOGLevel("IO_*", 1);
 
-    // 获取配置管理器实例并初始化，加载 "resolve.env" 文件
-    ConfigManager::getInstance().initialize(argc, argv, "resolve.env");
+    // 获取配置管理器实例并初始化，加载 "config.toml" 文件
+    ConfigManager::getInstance().initialize(argc, argv, "config.toml");
 
     // 获取配置
     const Config &config = ConfigManager::getInstance().getConfig();

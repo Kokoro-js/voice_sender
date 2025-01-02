@@ -15,7 +15,7 @@ file(GLOB_RECURSE HEADERS "${SRC_DIR}/*.h" "${SRC_DIR}/**/*.h")
 
 find_package(protobuf CONFIG REQUIRED)
 message(STATUS "Using protobuf ${Protobuf_VERSION}")
-#file(GLOB_RECURSE PROTO_FILES "${SRC_DIR}/api/proto/*.proto")
+
 set(PROTO_FILES
         src/api/proto/Base.proto
         src/api/proto/Action.proto
@@ -31,9 +31,14 @@ add_executable(${PROJECT_NAME} ${SOURCES} ${PROTO_SRCS} ${PROTO_HDRS}
         src/DownloadManager/AudioSender/decoder/CustomIO.hpp
 )
 
-# 查找依赖库 Opus、Poco、plog 和 CURL
+# 包含优化设置
+include(cmake/ReleaseOptimizations.cmake)
+add_release_optimizations(${PROJECT_NAME})
+
+# 查找依赖库
 find_package(Opus CONFIG REQUIRED)
 #find_package(plog CONFIG REQUIRED)
+#find_package(opusenc CONFIG REQUIRED)
 find_package(glog CONFIG REQUIRED)
 find_package(CURL CONFIG REQUIRED)
 find_package(mpg123 CONFIG REQUIRED)
@@ -54,28 +59,41 @@ include(cmake/folly.cmake)
 set(UVGRTP_DISABLE_CRYPTO 1 CACHE BOOL "Disable Crypto++ in uvgRTP.")
 CPMAddPackage("gh:ultravideo/uvgRTP@3.1.3")
 
-set(LIBCORO_EXTERNAL_DEPENDENCIES ON CACHE BOOL "Use CMake find_package to resolve dependencies instead of embedded libraries.")
-CPMAddPackage("gh:jbaldwin/libcoro@0.12.1")
+CPMAddPackage(
+        NAME libcoro
+        GITHUB_REPOSITORY "jbaldwin/libcoro"
+        GIT_TAG "v0.12.1"
+        OPTIONS "LIBCORO_EXTERNAL_DEPENDENCIES ON" "LIBCORO_BUILD_TESTS OFF" "LIBCORO_BUILD_EXAMPLES OFF"
+)
+
+CPMAddPackage(
+        NAME figcone
+        GITHUB_REPOSITORY "kamchatka-volcano/figcone"
+        GIT_TAG "v3.2.0"
+        OPTIONS "FIGCONE_USE_ALL OFF" "FIGCONE_USE_TOML ON"
+)
+
+CPMAddPackage(
+        NAME xsimd
+        GITHUB_REPOSITORY "xtensor-stack/xsimd"
+        GIT_TAG "13.1.0"
+        OPTIONS "BUILD_TESTS OFF"
+)
 
 CPMAddPackage(
         NAME yalantinglibs
         GITHUB_REPOSITORY "alibaba/yalantinglibs"
-        GIT_TAG "0.3.9"  # 明确指定为 "0.3.9"，避免 CPM 尝试加 "v"
+        GIT_TAG "0.3.9"
         OPTIONS "BUILD_EXAMPLES OFF" "BUILD_BENCHMARK OFF"
         "BUILD_UNIT_TESTS OFF" "GENERATE_BENCHMARK_DATA OFF" "BUILD_BUILD_CORO_RPC OFF"
 )
 
 CPMAddPackage("gh:cameron314/readerwriterqueue@1.0.6")
 
-# 设置 uvgRTP 选项，并添加子目录
-#add_subdirectory(external/uvgRTP)
-#add_subdirectory(external/libcoro)
-add_subdirectory(external/libopusenc)
-
-# 添加头文件搜索路径，确保包含 curl 和 libcoro 的头文件
+# 添加头文件搜索路径
 include_directories(
-        ${CURL_INCLUDE_DIRS}  # 添加 curl 头文件路径
-        include  # 添加项目 include 目录
+        ${CURL_INCLUDE_DIRS}
+        include
         ${CMAKE_CURRENT_BINARY_DIR}
 )
 
@@ -90,13 +108,16 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
         MPG123::libmpg123 MPG123::libout123 MPG123::libsyn123
         SampleRate::samplerate
         cppzmq cppzmq-static
-        opusenc
+        # opusenc
         protobuf::libprotoc protobuf::libprotobuf protobuf::libprotobuf-lite
         glog::glog
         yalantinglibs::yalantinglibs
+        figcone::figcone
+        xsimd
 )
 
-add_executable(test test.cpp)
+#[[
+# 测试可执行文件
 target_link_libraries(test PRIVATE
         MPG123::libmpg123 MPG123::libout123 MPG123::libsyn123
 )
@@ -105,3 +126,4 @@ add_executable(testb testb.cpp)
 target_link_libraries(testb PRIVATE
         MPG123::libmpg123 MPG123::libout123 MPG123::libsyn123
 )
+]]
