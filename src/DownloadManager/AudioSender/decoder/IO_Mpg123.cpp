@@ -34,16 +34,21 @@ off_t CustomIO::custom_mpg123_lseek(void *handle, off_t offset, int whence) {
             break;
         default:
             LOG(ERROR) << "Invalid 'whence': " << whence;
-            return -1;
+            return MPG123_ERR;
     }
 
     if (new_pos < 0 || static_cast<size_t>(new_pos) > src_buffer->size()) {
         LOG(ERROR) << "Seek out of range. Position: " << new_pos;
-        return -1;
+        return MPG123_ERR;
     }
 
     src_buffer->pos_ = static_cast<size_t>(new_pos);
-    VLOG(2) << "Custom lseek called with offset: " << offset << ", whence: " << whence << ". New position: " << new_pos;
+
+    VLOG(2) << "Custom lseek called: offset = " << offset
+            << ", whence = " << whence
+            << ", new position = " << new_pos
+            << ", buffer size = " << src_buffer->size();
+
     return new_pos;
 }
 

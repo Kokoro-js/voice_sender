@@ -5,14 +5,14 @@ include(${CMAKE_CURRENT_BINARY_DIR}/cmake/CPM.cmake)
 CPMAddPackage(
         NAME FFmpeg
         GIT_REPOSITORY https://github.com/FFmpeg/FFmpeg
-        GIT_TAG n7.0.2
+        GIT_TAG n7.1
         DOWNLOAD_ONLY YES
 )
 
 # 定义 FFmpeg 安装路径
 set(FFMPEG_INSTALL_PREFIX ${CMAKE_BINARY_DIR}/ffmpeg)
 
-if(FFmpeg_ADDED)
+if (FFmpeg_ADDED)
     include(ExternalProject)
 
     # 配置 FFmpeg 编译
@@ -39,7 +39,7 @@ if(FFmpeg_ADDED)
     # 自动添加 include 和 lib 路径
     include_directories(${FFMPEG_INSTALL_PREFIX}/include)
     link_directories(${FFMPEG_INSTALL_PREFIX}/lib)
-endif()
+endif ()
 
 # 创建 FFmpeg INTERFACE 库
 add_library(FFmpeg INTERFACE)

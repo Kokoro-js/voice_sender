@@ -45,7 +45,7 @@ void Handlers::updatePlayListHandler(const Instance::UpdatePlayListPayload *data
 
     // 解析并更新任务列表
     for (const auto &order: data->order_list()) {
-        LOG(INFO) << order.url();
+        VLOG(2) << order.url();
         TaskItem task{
                 .name = order.task_id(),
                 .url = order.url(),

@@ -39,7 +39,7 @@ enum PlayState {
 struct AudioProps {
     const AVInputFormat *detectedFormat = nullptr;
 
-    PlayState play_state;
+    PlayState play_state = PLAYING;
     bool info_found = false;
     long rate = 44100;
     int channels = 2;
@@ -88,9 +88,13 @@ public:
 
     bool doSkip();
 
+    void clean_up();
+
     bool switchPlayState(PlayState state);
 
     bool setVolume(float volume);
+
+    bool seekSecond(int seconds);
 
     coro::event EventNewDownload;
     coro::event EventReadFinshed;
@@ -98,8 +102,7 @@ public:
     coro::event EventStateUpdate;
 
     std::shared_ptr<ExtendedTaskItem> task;
-    DataVariant data_wrapper = BufferWarp();;
-    coro::mutex mutex_buffer;
+    DataVariant data_wrapper = BufferWarp();
 
     AudioDecoder *using_decoder = nullptr;
     Mpg123Decoder mpg123_decoder;
@@ -119,7 +122,6 @@ private:
     std::shared_ptr<coro::io_scheduler> scheduler_;
     coro::ring_buffer<std::vector<uint8_t>, 25> rb;
 
-    static constexpr int DEFAULT_DATA_BUFFER_SIZE = 16 * 1024 * 1024;
     static constexpr int TARGET_SAMPLE_RATE = 48000;
     static constexpr int OPUS_DELAY = 40;
     static constexpr int OPUS_FRAMESIZE = static_cast<int>(TARGET_SAMPLE_RATE * OPUS_DELAY * 0.001);
@@ -141,6 +143,12 @@ private:
     AlignedMem::AlignedUniquePtr<unsigned char> read_output_buffer_;
     AlignedMem::AlignedUniquePtr<float> float_buffer_;
     AlignedMem::AlignedUniquePtr<int16_t> resampled_buffer_;
+
+    bool resample_audio(int &totalSamples, int channelCount, long rate, float volume);
+
+    bool
+    process_audio_frame(int &totalSamples, int channelCount, bool need_resample, bool applyVolume, const void *raw_data,
+                        int encoding, int16_t *&pcm_data);
 };
 
 #endif // AUDIOSENDER_H

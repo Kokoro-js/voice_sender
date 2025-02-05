@@ -15,12 +15,14 @@ struct Config {
     int num_threads = 0; // 可选字段
     std::string log_level = "INFO"; // 可选字段
     int max_connections = 100; // 可选字段
+    int default_buffer_size = 24 * 1024 * 1024;
 
     // 定义 traits 以指定哪些字段是可选的
     using traits = figcone::FieldTraits<
             figcone::OptionalField<&Config::num_threads>,
             figcone::OptionalField<&Config::log_level>,
-            figcone::OptionalField<&Config::max_connections>
+            figcone::OptionalField<&Config::max_connections>,
+            figcone::OptionalField<&Config::default_buffer_size>
     >;
 };
 

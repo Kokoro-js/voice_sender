@@ -47,6 +47,14 @@ AudioSender::AudioSender(std::string stream_id, std::shared_ptr<RTPInstance> rtp
 
     opus_encoder_ctl(opus_encoder_, OPUS_SET_VBR(1)); // 启用变码率。
     opus_encoder_ctl(opus_encoder_, OPUS_SET_VBR_CONSTRAINT(1)); // 限制编码率波动范围。
+    opus_encoder_ctl(opus_encoder_, OPUS_SET_COMPLEXITY(10)); // 复杂度 10
+    opus_encoder_ctl(opus_encoder_, OPUS_SET_SIGNAL(OPUS_SIGNAL_MUSIC)); // Signal being encoded is music
+    opus_encoder_ctl(opus_encoder_, OPUS_SET_BANDWIDTH(OPUS_AUTO)); // 让他自己根据参数设定
+    opus_encoder_ctl(opus_encoder_, OPUS_SET_INBAND_FEC(0)); // 禁用FEC
+
+    /*opus_encoder_ctl(opus_encoder_, OPUS_SET_VBR_CONSTRAINT(0));  // 禁用波动限制，可以让音质有更大的自由度（根据网络情况）
+    opus_encoder_ctl(opus_encoder_, OPUS_SET_DTX(0));  // This is only applicable to the LPC layer
+    opus_encoder_ctl(opus_encoder_, OPUS_SET_PACKET_LOSS_PERC(0));*/
     // opus_encoder_ctl(opus_encoder_, OPUS_SET_BITRATE(128 * 1000));
 
     mpg123_decoder.setBuffer(&data_wrapper);

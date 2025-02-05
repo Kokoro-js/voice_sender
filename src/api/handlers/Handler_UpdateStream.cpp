@@ -19,9 +19,7 @@ void Handlers::updateStreamHandler(const Instance::UpdateStreamPayload *data, OM
     try {
         switch (data->action_case()) {
             case OMNI::Instance::UpdateStreamPayload::kSeekPayload: {
-                using_decoder->seek(data->seek_payload().second());
-                props.current_samples = using_decoder->getCurrentSamples();
-                props.do_empty_ring_buffer = true;
+                audio_sender->seekSecond(data->seek_payload().second());
             };
                 break;
             case OMNI::Instance::UpdateStreamPayload::kSkipPayload: {
@@ -37,10 +35,11 @@ void Handlers::updateStreamHandler(const Instance::UpdateStreamPayload *data, OM
                 if (offset != 0) {
                     if (!target->skipRelative(offset)) {
                         res.set_code(OMNI::ERROR);
-                        res.set_message(&"无法相对跳跃到任务 "[offset]);
+                        res.set_message("无法相对跳跃到任务 " + std::to_string(offset));
                         return;
                     }
                 }
+                target->skipDownload();
                 audio_sender->doSkip();
             };
                 break;
@@ -58,6 +57,8 @@ void Handlers::updateStreamHandler(const Instance::UpdateStreamPayload *data, OM
                 auto volume = data->set_volume_payload().volume();
                 audio_sender->setVolume(volume);
             };
+                break;
+            case Instance::UpdateStreamPayload::ACTION_NOT_SET:
                 break;
         }
     } catch (const std::exception &e) {

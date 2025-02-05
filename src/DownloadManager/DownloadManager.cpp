@@ -9,8 +9,12 @@
 #include "ylt/struct_json/json_reader.h"
 
 // 定义结构体用于解析缓存响应
-struct ResCached {
+struct UrlInfo {
     std::string url;
+    std::optional<std::string> user_agent;
+    std::optional<std::string> referer;
+    std::optional<std::string> cookie;
+    std::optional<std::string> proxy;
 };
 
 // 自定义删除器，确保 CURL 句柄被正确清理
@@ -33,11 +37,23 @@ DownloadManager::DownloadManager(std::shared_ptr<coro::thread_pool> tp, std::sha
 
 coro::task<void> DownloadManager::startQueueJob() {
     int err_count = 0;
-    while (!isStopped) {
-        if (err_count > 3) {
-            cleanupJob();
-            break;
+    while (true) {
+        if (isStopped) {
+            VLOG(1) << "下载任务已退出。";
+            co_return;
         }
+
+        if (extendedTask) {
+            if (extendedTask->read_error) {
+                err_count++;
+            }
+        }
+        if (err_count > 3) {
+            LOG(ERROR) << "错误次数过多退出。";
+            cleanupJob();
+            co_return;
+        }
+
         co_await tp_->yield();
 
         auto task = getNextTask();
@@ -49,18 +65,18 @@ coro::task<void> DownloadManager::startQueueJob() {
         }
 
         auto task_item = std::move(task.value());
-        // extendedTask 是用一次创建一次，作为 share_ptr 供别处获取，不需要重置它里边的任何状态，没有人用它的时候自然消失
-        extendedTask = std::make_shared<ExtendedTaskItem>(std::move(task_item));
-        ExtendedTaskItem *current_task = extendedTask.get();
 
-        // 初始化 CURL 句柄
-        auto curl_handle = std::shared_ptr<CURL>(curl_easy_init(), CurlHandleDeleter());
+        // 单个实例同期只能有一个 curl_handle，放在类中
+        curl_handle = std::shared_ptr<CURL>(curl_easy_init(), CurlHandleDeleter());
         if (!curl_handle) {
             LOG(ERROR) << "无法初始化 CURL 句柄，任务: " << task_item.name;
             audio_sender_->doSkip();
-            co_await current_task->EventReadFinished;
             continue;
         }
+
+        // extendedTask 存在类中，并且是用一次创建一次，作为 share_ptr 供别处获取，不需要重置它里边的任何状态，没有人用它的时候自然消失
+        extendedTask = std::make_shared<ExtendedTaskItem>(std::move(task_item), curl_handle);
+        ExtendedTaskItem *current_task = extendedTask.get();
 
         std::optional<std::string> final_url;
 
@@ -73,22 +89,28 @@ coro::task<void> DownloadManager::startQueueJob() {
                  * co_await current_task->EventReadFinished;
                  * */
                 err_count++;
+                autoNext(); // 跳跃下一首逻辑。
                 continue;
             }
-            curl_easy_setopt(curl_handle.get(), CURLOPT_URL, final_url->c_str());
         } else {
             final_url = extendedTask->item.url;
-            curl_easy_setopt(curl_handle.get(), CURLOPT_URL, final_url->c_str());
         }
+        curl_easy_setopt(curl_handle.get(), CURLOPT_URL, final_url->c_str());
 
         // 设置写回调函数
         curl_easy_setopt(curl_handle.get(), CURLOPT_WRITEFUNCTION, write_callback);
         curl_easy_setopt(curl_handle.get(), CURLOPT_WRITEDATA, current_task);
 
         // 设置低速限速和超时
-        if (!task_item.use_stream) {
-            curl_easy_setopt(curl_handle.get(), CURLOPT_LOW_SPEED_TIME, 30L); // 30秒
-            curl_easy_setopt(curl_handle.get(), CURLOPT_LOW_SPEED_LIMIT, 1024L * 320); // 320KB/s
+        if (task_item.use_stream) {
+            folly::IOBufQueue queue(folly::IOBufQueue::cacheChainLength());
+            extendedTask->setData(std::move(queue));
+            curl_easy_setopt(curl_handle.get(), CURLOPT_MAX_RECV_SPEED_LARGE, 1024L * 320); // 假设是流，应该进行限速
+        } else {
+            // 如果没在用流，则应该限制低速情况
+            // 10s 内下载速度低于 320
+            curl_easy_setopt(curl_handle.get(), CURLOPT_LOW_SPEED_TIME, 10L); // 10秒
+            curl_easy_setopt(curl_handle.get(), CURLOPT_LOW_SPEED_LIMIT, 1024L * 320 / 8); // 320kbps
         }
 
         // 执行下载
@@ -97,10 +119,15 @@ coro::task<void> DownloadManager::startQueueJob() {
         if (!success) {
             LOG(ERROR) << "下载任务跳过: " << task_item.name;
             err_count++;
+            autoNext(); // 跳跃下一首逻辑。
             continue;
         }
 
         err_count = 0;
+        if (!hasManualSkip) {
+            autoNext(); // 跳跃下一首逻辑。
+        }
+        hasManualSkip = false;
         VLOG(1) << "任务完成，准备下一个任务。";
     }
 }
@@ -114,17 +141,16 @@ DownloadManager::getRealUrl(const std::string &cached_url, std::shared_ptr<CURL>
     coro::event EventCurlFinished;
 
     std::string responseString;
-    struct ResCached res;
+    UrlInfo res;
 
-    curl_easy_setopt(curl_handle.get(), CURLOPT_URL, cached_url.c_str());
-    curl_easy_setopt(curl_handle.get(), CURLOPT_HTTPHEADER, headers);
-    curl_easy_setopt(curl_handle.get(), CURLOPT_WRITEDATA, &responseString);
-    curl_easy_setopt(curl_handle.get(), CURLOPT_WRITEFUNCTION, write_to_string_callback);
-    manager.addTask(curl_handle.get(),
+    auto curl = curl_handle.get();
+    curl_easy_setopt(curl, CURLOPT_URL, cached_url.c_str());
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &responseString);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_to_string_callback);
+    manager.addTask(curl_handle,
                     [&EventCurlFinished, &responseString, &res, curl_handle = curl_handle.get()](CURLcode result,
                                                                                                  const std::string & /*message*/) {
-
-
                         if (result != CURLE_OK) {
                             LOG(ERROR) << "CURL 请求失败，错误码: " << result;
                             res.url = "";
@@ -157,6 +183,17 @@ DownloadManager::getRealUrl(const std::string &cached_url, std::shared_ptr<CURL>
         LOG(ERROR) << "未能获取到真实的 URL，检查 API 日志获取详细信息";
         co_return std::nullopt;
     }
+
+    if (res.cookie) {
+        curl_easy_setopt(curl, CURLOPT_COOKIE, res.cookie.value().c_str());
+    }
+    if (res.referer) {
+        curl_easy_setopt(curl, CURLOPT_REFERER, res.referer.value().c_str());
+    }
+    if (res.user_agent) {
+        curl_easy_setopt(curl, CURLOPT_USERAGENT, res.user_agent.value().c_str());
+    }
+
     co_return res.url;
 }
 
@@ -168,22 +205,22 @@ coro::task<bool> DownloadManager::executeDownload(ExtendedTaskItem *current_task
     curl_easy_setopt(curl_handle.get(), CURLOPT_WRITEDATA, current_task);
     curl_easy_setopt(curl_handle.get(), CURLOPT_BUFFERSIZE, FIXED_CHUNK_SIZE);
 
-    // 设置低速限速和超时
-    if (!current_task->item.use_stream) {
-        curl_easy_setopt(curl_handle.get(), CURLOPT_LOW_SPEED_TIME, 30L); // 30秒
-        curl_easy_setopt(curl_handle.get(), CURLOPT_LOW_SPEED_LIMIT, 1024L * 320); // 320KB/s
-    }
+    // 允许最多 2 次 302 跳转
+    curl_easy_setopt(curl_handle.get(), CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(curl_handle.get(), CURLOPT_MAXREDIRS, 2L);
 
     current_task->state = AudioCurrentState::Downloading;
 
-    manager.addTask(curl_handle.get(),
-                    [current_task, curl_handle = curl_handle.get()](CURLcode result,
-                                                                    const std::string &message) {
+    coro::event EventCurlFinished;
+
+    manager.addTask(curl_handle,
+                    [current_task, curl_handle = curl_handle.get(), &EventCurlFinished](CURLcode result,
+                                                                                        const std::string &message) {
                         if (result != CURLE_OK) {
                             LOG(ERROR) << "下载失败: " << current_task->item.name << "，错误码: " << result << "，消息: "
                                        << message;
                             current_task->should_skip = true;
-                            current_task->EventDownloadFinished.set();
+                            EventCurlFinished.set();
                             return;
                         }
 
@@ -195,26 +232,32 @@ coro::task<bool> DownloadManager::executeDownload(ExtendedTaskItem *current_task
                                        << http_code
                                        << "，消息: "
                                        << message;
-                        } else {
-                            VLOG(1) << "下载成功: " << current_task->item.name;
-
-                            double content_length = 0.0;
-                            curl_easy_getinfo(curl_handle, CURLINFO_CONTENT_LENGTH_DOWNLOAD, &content_length);
-                            current_task->total_size = static_cast<size_t>(content_length);
-                            current_task->state = AudioCurrentState::DownloadAndWriteFinished;
+                            current_task->should_skip = true;
+                            EventCurlFinished.set();
+                            return;
                         }
 
-                        current_task->EventDownloadFinished.set();
+                        VLOG(1) << "下载成功: " << current_task->item.name;
+
+                        double content_length = 0.0;
+                        curl_easy_getinfo(curl_handle, CURLINFO_CONTENT_LENGTH_DOWNLOAD, &content_length);
+                        current_task->total_size = static_cast<size_t>(content_length);
+                        current_task->state = AudioCurrentState::DownloadAndWriteFinished;
+
+
+                        EventCurlFinished.set();
                     });
 
     // 事件设置会导致逻辑跑到别的回调线程进行，但此处逻辑并不重，可以允许跑到 EventReadFinished 那，避免线程切换开销。
-    co_await current_task->EventDownloadFinished;
+    co_await EventCurlFinished;
 
     if (current_task->should_skip) {
         // 该函数会确保 Control 完成周期。
         audio_sender_->doSkip();
     }
 
+    co_await tp_->schedule();
+    current_task->EventDownloadFinished.set();
     // 等待 Control 周期走完，设置 EventReadFinished。
     co_await current_task->EventReadFinished;
 
@@ -244,9 +287,39 @@ size_t DownloadManager::write_callback(void *ptr, size_t size, size_t nmemb, voi
     if (auto fixed_buffer = std::get_if<FixedCapacityBuffer>(&data)) {
         fixed_buffer->insert(static_cast<const unsigned char *>(ptr), total_size);
     } else if (auto iobuf = std::get_if<folly::IOBufQueue>(&data)) {
-        auto data_chunk = folly::IOBuf::copyBuffer(static_cast<const char *>(ptr), total_size);
-        iobuf->append(std::move(data_chunk));
-        LOG(ERROR) << "使用了 IOBuf";
+        std::unique_ptr<folly::IOBuf> data_chunk = folly::IOBuf::copyBuffer(static_cast<const char *>(ptr), total_size);
+        /*{
+            // 加锁追加数据
+            coro::sync_wait(current_task->mutex_data.lock());
+            iobuf->append(std::move(data_chunk));
+        }*/
+        current_task->iobuf_write_queue.append(std::move(data_chunk));
+
+        // 可以防止频繁 append 多线程读写的冲突，并且能减少 IOBUF 的碎片化，充分利用 CPU 缓存。
+        if (current_task->iobuf_write_queue.chainLength() > 1024 * 32) {
+            // 移动当前队列数据到一个连续 IOBuf
+            auto flattened = current_task->iobuf_write_queue.move();
+            flattened->coalesce();  // 合并碎片化数据
+
+            // 当读取上的 iobufqueue 超过某个大小时不再往里边写入，flattened 的内存块会自己释放。
+            if (iobuf->chainLength() > 5 * 1024 * 1024) {
+                current_task->total_size += total_size;
+                curl_easy_pause(current_task->curl_handler.get(), CURLPAUSE_RECV);
+                return total_size;
+            }
+
+            {
+                // 加锁追加数据
+                coro::sync_wait(current_task->mutex_data.lock());
+                iobuf->append(std::move(flattened));
+
+                // 实现固定长度：如果链表超过阈值，移除最早的块
+                // 在下载侧删除数据是坏注意
+                /*while (iobuf->chainLength() > 5 * 1024 * 1024) {
+                    iobuf->pop_front();
+                }*/
+            }
+        }
     }
 
     // 累加下载的数据

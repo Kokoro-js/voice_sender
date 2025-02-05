@@ -1,6 +1,7 @@
 #include "AudioSender.h"
 
 constexpr const char *mp3_format = "mp3";
+constexpr const char *mov_format = "mov,mp4,m4a,3gp,3g2,mj2";
 
 const AVInputFormat *detect_format(std::vector<char> &audio_data) {
     AVProbeData probeData = {};
@@ -35,23 +36,33 @@ const AVInputFormat *detect_format(std::vector<char> &audio_data) {
 
 #include "../../api/EventPublisher.h"
 
+// 第一个参数是指针的指针
 coro::task<void> AudioSender::start_producer(const std::shared_ptr<ExtendedTaskItem> *ptr, const bool &isStopped) {
     std::vector<char> audio_data;
     audio_data.reserve(4096);
 
-    while (!isStopped) {
+    while (true) {
+        if (isStopped) {
+            VLOG(1) << "控制任务已退出。";
+            co_return;
+        }
+
         if (task != nullptr) {
             VLOG(2) << task.use_count();
         }
 
-        if (*ptr == nullptr || *ptr == task) {
+        const auto &download_task = *ptr; // & 只是引用，不增加引用计数
+
+        // 如果远端指针为空或等于我们目前类内存储的智能指针，则跳过
+        if (!download_task || download_task == task) {
             co_await EventNewDownload;
             EventNewDownload.reset();
             continue;
         }
 
-        // 解引用，此处引用计数 +1
-        task = (*ptr);
+        // 更新任务（引用计数 +1）
+        task = download_task;
+
         auto current_task = task.get();
         auto data = &current_task->data;
         if (auto *fixed_buffer = std::get_if<FixedCapacityBuffer>(data)) {
@@ -73,12 +84,17 @@ coro::task<void> AudioSender::start_producer(const std::shared_ptr<ExtendedTaskI
 
             if (audio_props.detectedFormat == nullptr) {
                 LOG(ERROR) << "未知格式！任务" << current_task->item.name << "(" << current_task->item.url << ")";
+                current_task->set_read_error(ReaderErrorCode::InvalidFormat, "未知格式");
                 continue;
             }
 
             if (strcmp(audio_props.detectedFormat->name, mp3_format) == 0) {
                 using_decoder = &mpg123_decoder;
                 LOG(INFO) << "格式" << audio_props.detectedFormat->name;
+            } else if (strcmp(audio_props.detectedFormat->name, mov_format) == 0) {
+                // 必须等下载完才能正确解析该类型格式。
+                co_await current_task->EventDownloadFinished;
+                using_decoder = &ffmpeg_decoder;
             } else {
                 LOG(INFO) << "格式" << audio_props.detectedFormat->name;
                 using_decoder = &ffmpeg_decoder;
@@ -94,13 +110,22 @@ coro::task<void> AudioSender::start_producer(const std::shared_ptr<ExtendedTaskI
         }
 
         {
-            co_await mutex_buffer.lock();
-
+            // co_await current_task->mutex_data.lock();
+            int err_count = 0;
+            int max_err_count = 3;
             while (!audio_props.info_found) {
-                auto info = using_decoder->getAudioFormat();;
+                if (err_count > max_err_count - 1) {
+                    co_await current_task->EventDownloadFinished;
+                }
+                auto info = using_decoder->getAudioFormat();
                 if (info.channels == 0) {
                     LOG(ERROR) << "找不到音频信息" << current_task->item.name;
-                    continue;
+                    err_count++;
+                    if (err_count > max_err_count) {
+                        break;
+                    } else {
+                        continue;
+                    }
                 }
                 audio_props.channels = info.channels;
                 audio_props.rate = info.sample_rate;
@@ -119,6 +144,13 @@ coro::task<void> AudioSender::start_producer(const std::shared_ptr<ExtendedTaskI
         EventPublisher::getInstance().handle_event_publish(stream_id_, false);
 
         if (current_task->state < AudioCurrentState::DownloadAndWriteFinished) {
+            while (current_task->item.use_stream) {
+                co_await scheduler_->yield_for(std::chrono::milliseconds(2000));
+                if (current_task->EventDownloadFinished.is_set()) {
+                    break;
+                }
+                EventFeedDecoder.set();
+            }
             co_await current_task->EventDownloadFinished;
             EventFeedDecoder.set();
         }
@@ -139,8 +171,6 @@ coro::task<void> AudioSender::start_producer(const std::shared_ptr<ExtendedTaskI
         audio_props.reset();
         using_decoder->reset();
     }
-
-    VLOG(1) << "控制任务已退出。";
 }
 
 // 该函数负责单个 Control 周期顺利通过，外部无需担心 current_task 的设置问题。
@@ -156,6 +186,15 @@ bool AudioSender::doSkip() {
     EventReadFinshed.set();
     EventFeedDecoder.reset();
     return true;
+}
+
+void AudioSender::clean_up() {
+    EventReadFinshed.set();
+    EventNewDownload.set();
+    EventFeedDecoder.set();
+    audio_props.play_state = PLAYING;
+    EventStateUpdate.set();
+    rb.notify_waiters();
 }
 
 bool AudioSender::switchPlayState(::PlayState state) {
@@ -175,5 +214,16 @@ bool AudioSender::setVolume(float volume) {
 
     // 四舍五入到两位小数
     audio_props.volume = std::round(volume * 100.0f) / 100.0f;
+    return true;
+}
+
+bool AudioSender::seekSecond(int seconds) {
+    if (task == nullptr) {
+        return false;
+    }
+
+    using_decoder->seek(seconds);
+    audio_props.current_samples = using_decoder->getCurrentSamples();
+    audio_props.do_empty_ring_buffer = true;
     return true;
 }

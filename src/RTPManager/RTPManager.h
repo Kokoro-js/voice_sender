@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include <string>
 #include <memory>
+#include <mutex>
 
 class RTPManager {
 public:
@@ -29,7 +30,8 @@ private:
     // 构造函数设为私有，确保只能通过 getInstance 获取实例
     RTPManager() = default;
 
-    std::unordered_map<std::string, std::shared_ptr<RTPInstance> > rtpInstances;
+    std::unordered_map<std::string, std::weak_ptr<RTPInstance>> rtpInstances;
+    std::mutex mutex_; // 保护rttpInstances的线程安全
 };
 
 #endif // RTP_MANAGER_H

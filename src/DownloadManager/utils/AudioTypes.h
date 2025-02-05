@@ -27,6 +27,7 @@ struct IDataWrapper {
         IOBuf
     };
     Type type_;
+
     [[nodiscard]] Type getType() const { return type_; }
 
     explicit IDataWrapper(Type type) : type_(type) {}
@@ -35,17 +36,20 @@ struct IDataWrapper {
     bool is_eof = false;                       // 标识缓冲区是否已经结束
 
     [[nodiscard]] virtual size_t size() const { return 0; };
+
     // virtual void setup();
-    virtual void readFront(std::vector<char> &audio_data,  size_t bytesToRead) {};
+    virtual void readFront(std::vector<char> &audio_data, size_t bytesToRead) {};
 };
 
 struct BufferWarp : IDataWrapper {
-    FixedCapacityBuffer* buffer = nullptr;
+    FixedCapacityBuffer *buffer = nullptr;
 
     explicit BufferWarp() : IDataWrapper(Type::Buffer) {};
-    explicit BufferWarp(FixedCapacityBuffer* fixed_capacity_buffer) : IDataWrapper(Type::Buffer), buffer(fixed_capacity_buffer) {}
 
-    [[nodiscard]] size_t size() const override  {
+    explicit BufferWarp(FixedCapacityBuffer *fixed_capacity_buffer) : IDataWrapper(Type::Buffer),
+                                                                      buffer(fixed_capacity_buffer) {}
+
+    [[nodiscard]] size_t size() const override {
         return buffer->size();
     }
 
@@ -54,7 +58,7 @@ struct BufferWarp : IDataWrapper {
         audio_data.insert(audio_data.end(), buffer->data(), buffer->data() + bytes);
     };
 
-    void setup(FixedCapacityBuffer* fixed_capacity_buffer) {
+    void setup(FixedCapacityBuffer *fixed_capacity_buffer) {
         buffer = fixed_capacity_buffer;
 
         is_eof = false;
@@ -64,12 +68,13 @@ struct BufferWarp : IDataWrapper {
 
 // 定义 IOBufWarp 结构体
 struct IOBufWarp : IDataWrapper {
-    folly::IOBufQueue* io_buf_queue = nullptr;
-    const folly::IOBuf* current_ = nullptr;    // 当前读取的 IOBuf 节点
+    folly::IOBufQueue *io_buf_queue = nullptr;
+    const folly::IOBuf *current_ = nullptr;    // 当前读取的 IOBuf 节点
     size_t offset_ = 0;                        // 当前节点的读取偏移量
 
     explicit IOBufWarp() : IDataWrapper(Type::IOBuf) {};
-    explicit IOBufWarp(folly::IOBufQueue* iobuf) : IDataWrapper(Type::IOBuf), io_buf_queue(iobuf) {}
+
+    explicit IOBufWarp(folly::IOBufQueue *iobuf) : IDataWrapper(Type::IOBuf), io_buf_queue(iobuf) {}
 
     void readFront(std::vector<char> &audio_data, size_t bytesToRead) override {
         auto chain = io_buf_queue->front();
@@ -91,7 +96,7 @@ struct IOBufWarp : IDataWrapper {
         }
     };
 
-    void setup(folly::IOBufQueue* iobuf_buf_queue_) {
+    void setup(folly::IOBufQueue *iobuf_buf_queue_) {
         io_buf_queue = iobuf_buf_queue_;
         current_ = io_buf_queue->front();
         offset_ = 0;
@@ -100,7 +105,7 @@ struct IOBufWarp : IDataWrapper {
         pos_ = 0;
     }
 
-    [[nodiscard]] size_t size() const override  {
+    [[nodiscard]] size_t size() const override {
         return io_buf_queue->chainLength();
     }
 
@@ -128,8 +133,8 @@ struct IOBufWarp : IDataWrapper {
 
 using DataVariant = std::variant<BufferWarp, IOBufWarp>;
 
-inline IDataWrapper* getBasePtr(DataVariant& var) {
-    return std::visit([](auto& derived) -> IDataWrapper* {
+inline IDataWrapper *getBasePtr(DataVariant &var) {
+    return std::visit([](auto &derived) -> IDataWrapper * {
         return &derived;  // 返回指向具体派生类的基类指针
     }, var);
 }

@@ -86,23 +86,40 @@ int main(int argc, char *argv[]) {
     Handlers &handlers = Handlers::getInstance();
     CurlMultiManager &curlManager = CurlMultiManager::getInstance();
 
-    /*createStreamAndManageTasks("test", "172.20.240.1", 5004,
-                           {"http://172.20.240.1/100-KB-MP3.mp3",
-                            "http://172.20.240.1/100-KB-MP3.mp3", "http://172.20.240.1/100-KB-MP3.mp3", "http://172.20.240.1/100-KB-MP3.mp3","http://172.20.240.1/100-KB-MP3.mp3"});*/
-
+#ifdef IS_RELEASE_BUILD
     /*createStreamAndManageTasks("test2", "172.20.240.1", 6005,
                                {
-                                       "http://172.20.240.1/500-KB-MP3.mp3",
-                                       "http://172.20.240.1/500-KB-MP3.mp3",
+                                       "http://172.20.240.1:3000/plugin/url/NETEASE:1367011294",
+                                       "http://172.20.240.1/【双声道】Lemon.mp3",
+                                       "http://172.20.240.1/【3D环绕】愛にできることはまだあるかい.mp3",
                                        "http://172.20.240.1/Dragonflame.mp3",
                                        "http://172.20.240.1/Setsuna.mp3",
-                                       "http://172.20.240.1:3000/plugin/url/NETEASE:29143062",
+                                       *//*"http://172.20.240.1:3000/plugin/url/NETEASE:29143062",
                                        "http://172.20.240.1:3000/plugin/url/NETEASE:1367011294",
                                        "http://172.20.240.1:3000/plugin/url/NETEASE:22710767",
                                        "http://172.20.240.1:3000/plugin/url/NETEASE:2618516962",
-                                       "http://172.20.240.1:3000/plugin/url/NETEASE:2612421551",
+                                       "http://172.20.240.1:3000/plugin/url/NETEASE:2612421551",*//*
                                });*/
+#else
+    /*createStreamAndManageTasks("test", "172.20.240.1", 5004,
+                          {"http://172.20.240.1/100-KB-MP3.mp3",
+                           "http://172.20.240.1/100-KB-MP3.mp3", "http://172.20.240.1/100-KB-MP3.mp3", "http://172.20.240.1/100-KB-MP3.mp3","http://172.20.240.1/100-KB-MP3.mp3"});*/
 
+    createStreamAndManageTasks("test2", "172.20.240.1", 6005,
+                               {
+                                       // "http://172.20.240.1/audio.m4s",
+                                       // "http://172.20.240.1/audio.m4a",
+                                       // "http://172.20.240.1/output.m4a",
+                                       // "http://172.20.240.1/【3D环绕】愛にできることはまだあるかい.mp3",
+                                       "http://172.20.240.1/Dragonflame.mp3",
+                                       "http://172.20.240.1/Setsuna.mp3",
+                                       /*"http://172.20.240.1:3000/plugin/url/NETEASE:29143062",
+                                       "http://172.20.240.1:3000/plugin/url/NETEASE:1367011294",
+                                       "http://172.20.240.1:3000/plugin/url/NETEASE:22710767",
+                                       "http://172.20.240.1:3000/plugin/url/NETEASE:2618516962",
+                                       "http://172.20.240.1:3000/plugin/url/NETEASE:2612421551",*/
+                               });
+#endif
     while (true) {
         publisher.handle_request_response();
     }

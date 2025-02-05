@@ -6,11 +6,11 @@
 #include <string>
 #include <curl/curl.h>
 #include "coro/coro.hpp"
-#include "TaskManager.h"
-#include "folly/io/IOBuf.h"
 #include "AudioSender/AudioSender.h"
+#include "TaskManager.h"
 #include "TaskHandler.h"
 #include "utils/ExtendedTaskItem.h" // 包含 ExtendedTaskItem
+#include "folly/io/IOBuf.h"
 
 class AudioSender; // 前向声明
 
@@ -31,6 +31,8 @@ public:
 
     AudioSender *get_audio_sender() const;
 
+    bool skipDownload();
+
 private:
     static constexpr int FIXED_CHUNK_SIZE = 8096 * 2; // 固定块大小
     static constexpr int QUEUE_SIZE = 5 * 1024 * 1024 / MAX_CHUNK_SIZE; // 5MB
@@ -38,6 +40,7 @@ private:
     std::shared_ptr<ExtendedTaskItem> extendedTask;
 
     std::shared_ptr<AudioSender> audio_sender_; // DownloadManager 拥有 Sender 的唯一控制权
+    std::shared_ptr<void> curl_handle;
 
     static size_t write_callback(void *ptr, size_t size, size_t nmemb, void *userdata);
 

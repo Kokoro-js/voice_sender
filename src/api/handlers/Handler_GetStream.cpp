@@ -26,9 +26,11 @@ void Handlers::getStreamHandler(const Instance::GetStreamPayload *data, OMNI::Re
 
     // 设置 current_play
     OrderItem *msg_item = res_data->mutable_current_play();
-    msg_item->set_task_id(task->item.name);
-    msg_item->set_type(Task2OrderType(task->item.type));
-    msg_item->set_url(task->item.url);
+    auto task_item = task->item;
+    msg_item->set_task_id(task_item.name);
+    msg_item->set_type(Task2OrderType(task_item.type));
+    msg_item->set_url(task_item.url);
+    msg_item->set_use_stream(task_item.use_stream);
 
     // 设置时间字段
     res_data->set_time_played(static_cast<int32_t>((props.current_samples * 1000L) / props.rate));

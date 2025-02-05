@@ -1,0 +1,19 @@
+{
+  "name": "kook-voice-connector",
+  "version": "1.0.0",
+  "dependencies": [
+    {
+      "name": "curl",
+      "features": [
+        "ssl"
+      ]
+    },
+    "glog",
+    "mpg123",
+    "libsamplerate",
+    "cppzmq",
+    "opus",
+    "fmt",
+    "folly"
+  ]
+}

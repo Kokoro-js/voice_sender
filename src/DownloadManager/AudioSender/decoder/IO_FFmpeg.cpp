@@ -1,5 +1,4 @@
 #include <cstdint>
-
 #include "CustomIO.hpp"
 #include "../../utils/AudioTypes.h"
 
@@ -26,26 +25,27 @@ int CustomIO::custom_read(void *opaque, uint8_t *buf, int buf_size) {
 // FFmpeg 自定义寻址函数
 int64_t CustomIO::custom_seek(void *opaque, int64_t offset, int whence) {
     auto *adb = static_cast<BufferWarp *>(opaque);
-    int64_t new_pos = -1;
+    int64_t new_pos = 0;
 
     switch (whence) {
         case SEEK_SET:
             new_pos = offset;
             break;
         case SEEK_CUR:
-            new_pos = adb->pos_ + offset;
+            new_pos = static_cast<int64_t>(adb->pos_) + offset;
             break;
         case SEEK_END:
-            new_pos = adb->size() + offset;
+            new_pos = static_cast<int64_t>(adb->size()) + offset;
             break;
         case AVSEEK_SIZE:
-            return adb->size();
+            return static_cast<int64_t>(adb->size());
         default:
-            return -1;
+            return AVERROR(EINVAL);
     }
 
-    if (new_pos < 0 || new_pos > static_cast<int64_t>(adb->size()))
-        return -1;
+    if (new_pos < 0 || new_pos > static_cast<int64_t>(adb->size())) {
+        return AVERROR(EINVAL);
+    }
 
     adb->pos_ = static_cast<size_t>(new_pos);
     return new_pos;
